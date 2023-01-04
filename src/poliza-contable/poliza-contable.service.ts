@@ -168,7 +168,6 @@ export class PolizaContableService {
       proyecto
     ])
   }
-
   createObjectPoliza(valores) {
     const poliza = new PolizaContable()
       .fechaRegistro(valores[0])
@@ -211,17 +210,14 @@ export class PolizaContableService {
       }
       //responseJournal.push(record)
     })
-
     // obteniendo  todos los centros de beneficios sin repetidos para despues agrupar
     const branchs = this.getBranchs(responseJournal)
-
     // creando map con los valores del centro de beneficios de financiera
     const centroBeneficios = await this.getCentroBeneficios(branchs)
 
     const mapCentroBeneficios = centroBeneficios[0]
 
     const mapJournal = centroBeneficios[1]
-
     // agrupa por centro de beneficios
     const moment = require('moment')
     responseJournal.forEach(function (value) {
