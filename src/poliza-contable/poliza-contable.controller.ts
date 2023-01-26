@@ -9,12 +9,9 @@ export class PolizaContableController {
 
   @Post('create')
   async create(
-    @Res() res: Response,
     @Body() createPolizaContableDto: CreatePolizaContableDto) {
-    let data = {}
-    data = await this.polizaContableService.create(createPolizaContableDto)
-    res.header('Content-Type', 'text/csv')
-    res.attachment('polizacontable.csv')
-    return res.send(data)
+    return  await this.polizaContableService.create(createPolizaContableDto)
+    
+    
   }  
 }

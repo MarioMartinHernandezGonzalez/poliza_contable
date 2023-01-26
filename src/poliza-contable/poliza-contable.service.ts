@@ -7,6 +7,11 @@ import { PolizaContable } from '../mambu/poliza-contable'
 export class PolizaContableService {
   constructor(private readonly mambuService: MambuService) {}
 
+  /**
+   * 
+   * @param responseJournal 
+   * @returns branches without repeating
+   */
   getBranchs(responseJournal) {
     const branchs = new Set()
     responseJournal.forEach(function (value) {
@@ -15,7 +20,7 @@ export class PolizaContableService {
     return [...branchs]
   }
 
-  async getCentroBeneficios(branchs) {
+  getCentroBeneficios = async (branchs) => {
     const mapCentroBeneficios = new Map()
     const mapJournal = new Map()
     for (let index = 0; index < branchs.length; index++) {
@@ -55,7 +60,7 @@ export class PolizaContableService {
           i !== registros.length - 1
         ) {
           // crea registro con reglas de la poliza contable
-          const rules = this.getRules(
+          const rules = this.setRules(
             fechaPoliza,
             cuenta,
             moneda,
@@ -79,7 +84,7 @@ export class PolizaContableService {
             } else {
               debito = debito + registros[i].amount
             }
-            const rules = this.getRules(
+            const rules = this.setRules(
               fechaPoliza,
               cuenta,
               moneda,
@@ -90,14 +95,7 @@ export class PolizaContableService {
             response.push(rules)
             break
           } else {
-            let rules = this.getRules(
-              fechaPoliza,
-              cuenta,
-              moneda,
-              debito,
-              credito,
-              centroBeneficios
-            )
+            let rules = this.setRules(fechaPoliza,cuenta,moneda,debito,credito,centroBeneficios)
             response.push(rules)
             credito = 0
             debito = 0
@@ -110,7 +108,7 @@ export class PolizaContableService {
             moneda = registros[i].glAccount.currency.code
             fechaPoliza = registros[i].bookingDate
             centroBeneficios = registros[i].assignedBranchKey
-            rules = this.getRules(
+            rules = this.setRules(
               fechaPoliza,
               cuenta,
               moneda,
@@ -119,7 +117,6 @@ export class PolizaContableService {
               centroBeneficios
             )
             response.push(rules)
-
             break
           }
         }
@@ -139,23 +136,23 @@ export class PolizaContableService {
     return response
   }
 
-  getRules(fechaRegistro, cuenta, moneda, debito, credito, centroBeneficios) {
-    let unidadOperativa = ''
-    let departamento = ''
-    let negocio = ''
-    let proyecto = ''
-    if (
-      cuenta.substring(0, 7) !== '1011007' &&
-      cuenta.substring(0, 7) !== '1224001'
-    ) {
+  setRules(fechaRegistro, cuenta, moneda, debito, credito, centroBeneficios) {
+    
+    let unidadOperativa = ' '
+    let departamento = ' '
+    let negocio = ' '
+    let proyecto = ' '
+    
+    if (cuenta.substring(0, 7) !== '1011007' && cuenta.substring(0, 7) !== '1224001') {
       unidadOperativa = centroBeneficios.substring(0, 5)
-      departamento = '2600'
+      departamento = '26000'
 
       if (cuenta.substring(0, 1) === '4') {
         negocio = 'ADMON'
         proyecto = 'OMEGA(CSG)'
       }
     }
+
     return this.createObjectPoliza([
       fechaRegistro,
       cuenta,
@@ -169,6 +166,7 @@ export class PolizaContableService {
     ])
   }
   createObjectPoliza(valores) {
+   // return [valores[0],valores[1],valores[2],valores[3] * -1 + valores[4],valores[5],valores[6],valores[7],valores[8]]
     const poliza = new PolizaContable()
       .fechaRegistro(valores[0])
       .cuenta(valores[1])
@@ -189,7 +187,7 @@ export class PolizaContableService {
       createPolizaContableDto.to
     )
     //intereses devengados
-    const responseInterestaccrual = await this.mambuService.interestaccrual(
+  /*  const responseInterestaccrual = await this.mambuService.interestaccrual(
       createPolizaContableDto.from,
       createPolizaContableDto.to
     )
@@ -209,20 +207,20 @@ export class PolizaContableService {
         assignedBranchKey: value.branchKey
       }
       //responseJournal.push(record)
-    })
+    })*/
+
     // obteniendo  todos los centros de beneficios sin repetidos para despues agrupar
     const branchs = this.getBranchs(responseJournal)
     // creando map con los valores del centro de beneficios de financiera
     const centroBeneficios = await this.getCentroBeneficios(branchs)
-
     const mapCentroBeneficios = centroBeneficios[0]
-
     const mapJournal = centroBeneficios[1]
     // agrupa por centro de beneficios
-    const moment = require('moment')
     responseJournal.forEach(function (value) {
       const branch = value.assignedBranchKey
       const aux = mapJournal.get(branch)
+      const moment = require('moment')
+
       aux.push({
         creationDate: value.creationDate,
         bookingDate: moment(value.bookingDate).format('DD/MM/YYYY'),
@@ -234,25 +232,41 @@ export class PolizaContableService {
       mapJournal.set(branch, aux)
     })
 
-    const { parse } = require('json2csv')
-    const fields = [
-      'unidadNegocio',
-      'fechaRegistro',
-      'grupoContable',
-      'cuenta',
-      'moneda',
-      'importe',
-      'unidadOperativa',
-      'departamento',
-      'negocio',
-      'proyecto'
-    ]
-    const opt = { fields }
-    try {
-      const csv = parse(this.getResponse(mapJournal), opt)
-      return csv
-    } catch (e) {
-      console.log(e)
-    }
+    await this.createFile(mapJournal)
+  }
+
+  /**
+   * 
+   * @param mapJournal 
+   * @returns  true in case success
+   */    
+  createFile = async (mapJournal) => {
+    const moment = require('moment')
+    const ObjectsToCsv = require('objects-to-csv')
+    const csv = new ObjectsToCsv(this.getResponse(mapJournal));   
+    const today = moment().format('DDMMYYYY')
+    const consecutive = this.getConsecutive(); 
+    // Save to file:
+    const dataString = await csv.toString(false) 
+    let fs = require('fs');
+    fs.appendFile(`\\\\${process.env.HOST}\\${process.env.CARPETA}\\OMEGA_31122022_${consecutive}.csv`,
+
+    //    fs.appendFile(`\\\\${process.env.HOST}\\${process.env.CARPETA}\\OMEGA_${today}_${consecutive}.csv`,
+      dataString, 
+    function (err) {
+      if (err) return false;
+    });
+      return true
+  }
+
+  /**
+   * 
+   * @returns  consecutive for file name
+   */
+   getConsecutive (){
+    const moment = require('moment')
+    const fechaInicio = moment(new Date(`${process.env.FECHA_INICIO}`))
+    const fechaFin = moment()
+    return fechaFin.diff(fechaInicio,'days')
   }
 }
